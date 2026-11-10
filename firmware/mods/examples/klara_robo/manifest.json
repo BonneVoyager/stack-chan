@@ -1,0 +1,17 @@
+{
+  "include": ["$(MODDABLE)/examples/manifest_mod.json"],
+  "modules": {
+    "*": [
+      "./mod",
+      "./digi-clock",
+      "./tmos-pir",
+      "./i2c-units",
+      "./smile-face",
+      "./sayings",
+      "./gestures",
+      "./head",
+      "./lights",
+      "./rainbow"
+    ]
+  }
+}
