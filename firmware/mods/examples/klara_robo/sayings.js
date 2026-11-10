@@ -71,6 +71,16 @@ export const UPSIDE_DOWN_SAYINGS = [
   { text: 'Put me down!', speech: 'プットミーダウン', gesture: 'surprise' },
 ]
 
+// Said about the photo she just took; the text is its caption.
+export const PHOTO_SAYINGS = [
+  { text: 'Nice photo!', speech: 'ナイスフォト', gesture: 'photo' },
+  { text: 'You look great!', speech: 'ユールックグレイト', gesture: 'photo' },
+  { text: 'So cute!', speech: 'ソーキュート', gesture: 'photo' },
+  { text: 'Beautiful!', speech: 'ビューティフル', gesture: 'photo' },
+  { text: 'Got it!', speech: 'ゴットイット', gesture: 'photo' },
+]
+export const PHOTO_FAILED_SAYING = { text: "I can't see!", speech: 'アイキャントシー', gesture: 'sad' }
+
 // Said when she is low on energy.
 export const YAWN_SAYINGS = [{ text: 'Yaaawn...', speech: 'ファー', gesture: 'yawn' }]
 

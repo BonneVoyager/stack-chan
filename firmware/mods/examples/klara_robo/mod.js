@@ -3,6 +3,7 @@ import { Emoticon } from 'effects/emoticon'
 import { GESTURES, SOUNDS } from 'gestures'
 import { createHead, HEAD_MOVES } from 'head'
 import { createLights } from 'lights'
+import { showPhoto } from 'photo'
 import { createRainbow } from 'rainbow'
 import {
   ARRIVAL_SAYINGS,
@@ -10,6 +11,8 @@ import {
   FAREWELL_SAYINGS,
   HUMS,
   PAT_SAYINGS,
+  PHOTO_FAILED_SAYING,
+  PHOTO_SAYINGS,
   SAYINGS,
   SHAKEN_SAYINGS,
   TOUCH_SAYINGS,
@@ -44,6 +47,17 @@ const BALLOON = { right: 20, bottom: 8, width: 220 }
 const STATUS_MS = 6000
 // How long a gesture's face pose, hands, effect and light stay.
 const GESTURE_MS = 2500
+
+// Photo: after a tap on the face and her usual reaction she counts down this
+// many seconds, takes a picture and shows it for a while.
+const PHOTO_COUNTDOWN = 3
+const PHOTO_SHOW_MS = 5000
+// She looks straight ahead and slightly up while posing, since the camera is in her head.
+const PHOTO_POSE = [[0, -0.15, 0.4]]
+const COUNT_TONE = { hz: 660, ms: 90 }
+const SHUTTER_TONE = { hz: 1760, ms: 40 }
+const COUNT_LIGHT = [10, 10, 10]
+const SHUTTER_LIGHT = [40, 40, 40]
 
 // Presence (Unit TMOS PIR): she falls asleep after being alone this long,
 // and reacts to nearby movement at most this often.
@@ -178,7 +192,9 @@ export function onContextCreated(robot) {
   }
 
   let isShowingRainbow = false
-  const isBusy = () => isAudioBusy || isShowingRainbow
+  // True from the tap on her face until the photo is put away again.
+  let isTakingPhoto = false
+  const isBusy = () => isAudioBusy || isShowingRainbow || isTakingPhoto
 
   // Flourishes beside and over the face, each shown for a moment.
   const effects = {}
@@ -208,7 +224,8 @@ export function onContextCreated(robot) {
   }
 
   // Plays a gesture with her whole body and, with it, an optional saying or hum.
-  const perform = async (name, saying) => {
+  // `showsBalloon` is false when the words are already on screen some other way.
+  const perform = async (name, saying, showsBalloon = true) => {
     const gesture = GESTURES[name] ?? {}
     if (gesture.pose) face.react(gesture.pose, GESTURE_MS)
     if (gesture.head) void head.play(HEAD_MOVES[gesture.head])
@@ -216,16 +233,17 @@ export function onContextCreated(robot) {
     if (gesture.effect) showEffect(gesture.effect, GESTURE_MS)
     if (gesture.light === 'rainbow') lights.rainbow(GESTURE_MS)
     else if (gesture.light) lights.flash(gesture.light, GESTURE_MS)
-    if (saying) robot.ui.showBalloon(saying.text, BALLOON)
+    const hasBalloon = saying !== undefined && showsBalloon
+    if (hasBalloon) robot.ui.showBalloon(saying.text, BALLOON)
     await Promise.all([
       withAudio(async () => {
         if (gesture.sound) await playTune(gesture.sound)
         if (saying?.speech) await robot.audio.say(saying.speech)
         else if (saying?.koe) await robot.audio.sing(saying.koe)
       }),
-      delay(saying ? BALLOON_MS : 0),
+      delay(hasBalloon ? BALLOON_MS : 0),
     ])
-    if (saying) robot.ui.hideBalloon()
+    if (hasBalloon) robot.ui.hideBalloon()
   }
   const say = (saying) => perform(saying.gesture, saying)
 
@@ -271,13 +289,59 @@ export function onContextCreated(robot) {
     if (isSomeoneThere === false) sleepLater()
   }
 
-  // Smiling face that plays small idle expressions on its own and answers a touch.
+  // A tap on her face: the usual reaction, a countdown, then a photo on screen.
   const pickTouchSaying = createPicker(TOUCH_SAYINGS)
+  const pickPhotoSaying = createPicker(PHOTO_SAYINGS)
+  const takePhoto = async () => {
+    if (isBusy()) return
+    isTakingPhoto = true
+    try {
+      await say(pickTouchSaying())
+
+      face.react('grin', PHOTO_COUNTDOWN * 1000)
+      void head.play(PHOTO_POSE)
+      for (let count = PHOTO_COUNTDOWN; count > 0; count--) {
+        robot.ui.showBalloon(`${count}...`, BALLOON)
+        lights.flash(COUNT_LIGHT, 300)
+        void withAudio(() => robot.audio.tone(COUNT_TONE.hz, COUNT_TONE.ms))
+        await delay(1000)
+      }
+      robot.ui.hideBalloon()
+
+      lights.flash(SHUTTER_LIGHT, 300)
+      void withAudio(async () => {
+        await robot.audio.tone(SHUTTER_TONE.hz, SHUTTER_TONE.ms)
+        await robot.audio.tone(SHUTTER_TONE.hz, SHUTTER_TONE.ms)
+      })
+      const saying = pickPhotoSaying()
+      let putAway
+      const dismissed = new Promise((resolve) => {
+        putAway = resolve
+      })
+      const isShown = await showPhoto(robot, { caption: saying.text, onDismiss: putAway })
+      if (!isShown) {
+        await say(PHOTO_FAILED_SAYING)
+        return
+      }
+      // The caption under the photo carries the words, so no balloon covers it.
+      await Promise.race([Promise.all([perform(saying.gesture, saying, false), delay(PHOTO_SHOW_MS)]), dismissed])
+      robot.ui.showFace()
+      face.react('grin')
+    } catch (error) {
+      trace(`klara robo: photo failed ${error}\n`)
+      robot.ui.hideBalloon()
+      robot.ui.showFace()
+    } finally {
+      isTakingPhoto = false
+    }
+  }
+
+  // Smiling face that plays small idle expressions on its own.
   const face = createSmileFace({
     setEmotion: (emotion) => robot.face.setEmotion(emotion),
     onTouch: () => {
       wake(BOOST.touch)
-      if (!isBusy()) void say(pickTouchSaying())
+      void takePhoto()
     },
   })
   robot.ui.setFace(face.content)
@@ -310,7 +374,7 @@ export function onContextCreated(robot) {
   every(
     () => randomBetween(GLANCE_PAUSE_MS.min, GLANCE_PAUSE_MS.max) * pace(),
     () => {
-      if (head.isBusy || isAsleep) return undefined
+      if (head.isBusy || isAsleep || isTakingPhoto) return undefined
       const yaw = (Math.random() + Math.random() - 1) * GLANCE_YAW
       const pitch = ((Math.random() + Math.random()) / 2) * GLANCE_PITCH
       return head.play([[yaw, pitch, randomBetween(GLANCE_SECONDS.min, GLANCE_SECONDS.max)]])
@@ -337,7 +401,7 @@ export function onContextCreated(robot) {
     },
     onMotion() {
       const now = Date.now()
-      if (isAsleep || now - lastMotionReaction < MOTION_REACTION_MS) return
+      if (isAsleep || isTakingPhoto || now - lastMotionReaction < MOTION_REACTION_MS) return
       lastMotionReaction = now
       energy = Math.min(1, energy + BOOST.motion)
       face.react('curious')
@@ -352,7 +416,7 @@ export function onContextCreated(robot) {
   let lastPatSaying = 0
   const pat = () => {
     const now = Date.now()
-    if (now - lastPat < PAT_REACTION_MS) return
+    if (isTakingPhoto || now - lastPat < PAT_REACTION_MS) return
     lastPat = now
     wake(BOOST.pat)
     const speaks = now - lastPatSaying >= PAT_SAYING_MS && !isBusy()
@@ -377,7 +441,7 @@ export function onContextCreated(robot) {
   let lastHandled = 0
   const handled = (motion) => {
     const now = Date.now()
-    if (now - lastHandled < HANDLING_REACTION_MS) return
+    if (isTakingPhoto || now - lastHandled < HANDLING_REACTION_MS) return
     lastHandled = now
     wake(BOOST.handled)
     const saying = (pickHandlingSaying[motion] ?? pickHandlingSaying.fallen)()
@@ -395,7 +459,7 @@ export function onContextCreated(robot) {
   }
 
   const showRainbow = async () => {
-    if (isShowingRainbow) return
+    if (isShowingRainbow || isTakingPhoto) return
     isShowingRainbow = true
     wake(BOOST.button)
     robot.ui.setMain(createRainbow())
@@ -409,6 +473,7 @@ export function onContextCreated(robot) {
   }
 
   watchButton(PINS.a, robot.input.button?.a, () => {
+    if (isTakingPhoto) return
     trace('klara robo: A pressed, nodding\n')
     wake(BOOST.button)
     face.react('grin')
@@ -436,6 +501,7 @@ export function onContextCreated(robot) {
     ['Yawn', () => say(YAWN_SAYINGS[0])],
     ['Humming', () => perform('hum', HUMS[0])],
     ['Rainbow', showRainbow],
+    ['Photo', takePhoto],
     ['Fall asleep', () => setAsleep(true)],
   ]
   let nextDemo = 0

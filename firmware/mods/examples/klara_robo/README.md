@@ -6,7 +6,7 @@ Klara is a personality MOD for M5StackChan: a smiling feminine face (lashes, blu
 - Button B: shows a rainbow arc with clouds on the screen for 3 seconds and says "hello rainbow!".
 - Every 15 to 30 seconds she says one of 20 friendly phrases from `sayings.js`, shown in a balloon. Each phrase comes with matching body language from `gestures.js`: a face pose, a head move, hands, a floating effect, a light flash and a short tune.
 - Every 4 to 7 seconds the head glances slightly to a random side, staying near the center.
-- Tapping the face makes her say a short reaction.
+- Tapping the face makes her say a short reaction, count down three seconds, take a photo with the built-in camera and show it for five seconds. The photo is kept in memory only and the camera is off the rest of the time.
 - Stroking the touch strip on top of the body brings hearts and a happy sound.
 - Shaking her, knocking her over or turning her upside down gets a dizzy, sad or surprised reaction.
 - Her energy drains while she is ignored and each interaction tops it up. Low energy slows her down and brings yawns, and at zero she falls asleep; high energy sometimes makes her hum. Energy is capped during the night hours of the device clock.

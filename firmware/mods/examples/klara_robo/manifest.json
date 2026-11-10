@@ -11,7 +11,8 @@
       "./gestures",
       "./head",
       "./lights",
-      "./rainbow"
+      "./rainbow",
+      "./photo"
     ]
   }
 }

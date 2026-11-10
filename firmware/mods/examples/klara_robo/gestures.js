@@ -18,6 +18,8 @@ export const GESTURES = {
   dizzy: { pose: 'surprised', head: 'shake', effect: 'sweat', light: [20, 0, 20], sound: 'dizzy' },
   sad: { pose: 'sad', effect: 'tear', light: [0, 0, 16], sound: 'sad' },
   yawn: { pose: 'yawn', sound: 'yawn' },
+  // Shown over a photo, so nothing is drawn on the screen.
+  photo: { head: 'wiggle', light: 'rainbow', sound: 'happy' },
 }
 
 // Tunes are lists of [frequency in Hz, duration in ms].
